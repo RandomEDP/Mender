@@ -12,10 +12,10 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artefact: build/Mender_artefacts/Release/Mender.exe
+            app: build/Mender_artefacts/Release/Mender.exe
           - name: macOS
             os: macos-latest
-            artefact: build/Mender_artefacts/Release/Mender.app
+            app: build/Mender_artefacts/Release/Mender.app
             cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -28,11 +28,18 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Engine tests
+      - name: Tests
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Upload
+      - name: Upload plug-in
         uses: actions/upload-artifact@v4
         with:
-          name: Mender-${{ matrix.name }}
-          path: ${{ matrix.artefact }}
+          name: Mender-Plugin-${{ matrix.name }}
+          # Uploading the parent folder keeps the Mender.vst3 bundle folder intact.
+          path: build/MenderPlugin_artefacts/Release/VST3
+
+      - name: Upload standalone editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mender-Editor-${{ matrix.name }}
+          path: ${{ matrix.app }}
