@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            artefact: build/Mender_artefacts/Release/Mender.exe
+          - name: macOS
+            os: macos-latest
+            artefact: build/Mender_artefacts/Release/Mender.app
+            cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Engine tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mender-${{ matrix.name }}
+          path: ${{ matrix.artefact }}
