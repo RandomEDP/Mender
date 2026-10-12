@@ -16,7 +16,7 @@ set(MENDER_JUCE_PATH "" CACHE PATH "Path to a local JUCE checkout. Empty: downlo
 set(MENDER_ARA_SDK_PATH "" CACHE PATH "Path to a local ARA SDK checkout. Empty: download ARA SDK 2.3.0")
 
 # --- Repair engine: plain C++, no dependencies ------------------------------
-add_library(mender_engine STATIC engine/SpectralRepair.cpp)
+add_library(mender_engine STATIC engine/SpectralRepair.cpp engine/SpectralEdit.cpp)
 target_include_directories(mender_engine PUBLIC engine)
 set_target_properties(mender_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -24,6 +24,9 @@ enable_testing()
 add_executable(mender_engine_tests tests/EngineTests.cpp)
 target_link_libraries(mender_engine_tests PRIVATE mender_engine)
 add_test(NAME engine COMMAND mender_engine_tests)
+add_executable(mender_edit_tests tests/EditTests.cpp)
+target_link_libraries(mender_edit_tests PRIVATE mender_engine)
+add_test(NAME edits COMMAND mender_edit_tests)
 
 if(NOT MENDER_BUILD_APP)
     return()
@@ -51,6 +54,8 @@ juce_add_gui_app(Mender
 target_sources(Mender PRIVATE
     app/Main.cpp
     app/MainComponent.cpp
+    app/ClipPlayer.cpp
+    app/WavChunks.cpp
     app/SpectrogramView.cpp)
 
 target_compile_definitions(Mender PRIVATE
@@ -128,3 +133,8 @@ juce_add_console_app(mender_patch_tests)
 target_sources(mender_patch_tests PRIVATE tests/PatchListTests.cpp plugin/PatchList.cpp)
 target_link_libraries(mender_patch_tests PRIVATE juce::juce_audio_basics juce::juce_recommended_config_flags)
 add_test(NAME patches COMMAND mender_patch_tests)
+
+juce_add_console_app(mender_player_tests)
+target_sources(mender_player_tests PRIVATE tests/PlayerTests.cpp app/ClipPlayer.cpp)
+target_link_libraries(mender_player_tests PRIVATE juce::juce_audio_basics juce::juce_recommended_config_flags)
+add_test(NAME player COMMAND mender_player_tests)

@@ -35,22 +35,42 @@ Install on Windows: copy the whole `Mender.vst3` folder into
 
 ## The standalone editor
 
-- **Open** a WAV, AIFF or FLAC, or drop one on the window.
-- **Drag** a box around the noise. Keep it tight: anything inside the box that
-  swells louder than the audio at its edges is pulled down too.
-- **Repair** (Enter or R). **Undo/Redo** with Ctrl+Z / Ctrl+Y.
-- **Space** plays from one second before the box. **Hear original** switches
-  playback to the untouched clip for comparison.
-- Mouse wheel zooms in time, Shift + wheel scrolls, double-click zooms to the
-  box, Esc clears it.
-- **Save As** writes a new WAV at the source sample rate, 24-bit or better.
+Opens WAV/BWF (including multichannel polywavs from field recorders), AIFF and
+FLAC, up to 128 channels and 192 kHz.
 
-Controls:
+**Looking**
+- Mouse wheel zooms time; Ctrl/Cmd + wheel zooms frequency. Shift scrolls.
+  The Zoom buttons do the same; Fit shows everything; double-click zooms to the box.
+- **Brightness** and **Range** change how loud a sound must be to show, instantly.
+- **Channel** shows one channel (with its recorder track name) or all of them.
+  Editing and playback follow it: "All" edits every channel together.
 
-- **Fill from**: *Before and after* suits short noises over steady sound.
-  *Above and below* suits longer noises in a narrow band.
-- **Resolution**: more bands separate close pitches; fewer follow fast sounds.
-- **Tolerance**: lower removes more, higher protects the wanted sound.
+**Listening**
+- The yellow **cursor** marks where playback starts: click to place it or drag
+  its handle. Moving it during playback restarts from there.
+- **Play** (Space) from the cursor, **Play box** (B) the box's time span,
+  **Audition box** (A) only what is inside the box, its frequencies included.
+- **Hear original** plays the audio as it was before any edits.
+- **Level** sets playback volume; **Audio output...** picks the device and outputs.
+  Both are remembered.
+
+**Editing**
+- Drag a box around the noise and press **Repair** (Enter or R).
+- **Copy** (Ctrl+C) takes the frequencies inside the box; **Paste** (Ctrl+V)
+  replaces that band at the cursor with them, fading in and out. Use it to lay
+  clean room tone over a cough.
+- **Undo/Redo** with Ctrl+Z / Ctrl+Y.
+- **Save As** writes a new WAV at the source sample rate, 24-bit or better,
+  keeping the broadcast-WAV timecode and the recorder's iXML metadata.
+
+Repair controls: **Fill from** *Before and after* suits short noises over steady
+sound, *Above and below* longer noises in a narrow band. **Resolution**: more
+bands separate close pitches, fewer follow fast sounds. **Tolerance**: lower
+removes more.
+
+Files are opened whole, so very long multichannel files may need trimming
+first (the limit is about 6 GB of audio in memory, e.g. 8 channels at 192 kHz
+for about 15 minutes).
 
 ## Building
 
