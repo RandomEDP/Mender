@@ -39,7 +39,7 @@ juce::MemoryBlock read (const juce::File& wav, const char* id)
         if (memcmp (chunk, id, 4) == 0)
         {
             juce::MemoryBlock data;
-            in.readIntoMemoryBlock (data, (ssize_t) size);
+            in.readIntoMemoryBlock (data, (juce::pointer_sized_int) size);
             return data;
         }
 
