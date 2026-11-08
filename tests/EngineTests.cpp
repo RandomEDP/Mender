@@ -115,6 +115,46 @@ void run (double sampleRate, int fftSize)
            "strength 0 leaves the audio untouched", 0.0);
 }
 
+void reachTest()
+{
+    std::printf ("\n-- reference reach --\n");
+    const double sr = 48000.0;
+    const auto n = (std::size_t) (sr * 3.0);
+    std::mt19937 rng (3);
+    std::normal_distribution<double> noise (0.0, 0.001);
+
+    // A loud 3 kHz tone with a 0.3 s gap around the box, and a click at the same pitch in the box.
+    std::vector<float> x (n);
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        const double t = (double) i / sr;
+        x[i] = (float) ((t < 1.35 || t > 1.66 ? 0.3 * std::sin (2 * pi * 3000.0 * t) : 0.0) + noise (rng));
+    }
+    const auto c0 = (std::size_t) (1.5 * sr);
+    for (std::size_t i = c0; i < c0 + 200; ++i)
+        x[i] += 0.5f * (float) std::sin (2 * pi * 3000.0 * (double) i / sr);
+
+    mender::Selection sel { (std::int64_t) (1.49 * sr), (std::int64_t) (1.52 * sr), 2000.0, 5000.0 };
+    const auto run = [&] (double before)
+    {
+        auto y = x;
+        float* ch[] = { y.data() };
+        mender::Settings s;
+        s.referenceBeforeSeconds = before;
+        s.referenceAfterSeconds = before;
+        mender::repair (ch, 1, (std::int64_t) n, sr, sel, s);
+        double e = 0.0;
+        for (auto i = c0; i < c0 + 200; ++i)
+            e += (double) y[i] * y[i];
+        return 10.0 * std::log10 (e / 200.0 + 1.0e-20);
+    };
+
+    // Short reach only sees the quiet gap, so the click is removed; reaching back
+    // into the loud tone raises the allowed level and leaves more of the click.
+    const double shortReach = run (0.1), longReach = run (0.6);
+    check (shortReach < longReach - 6.0, "longer reach learns from audio further away (dB)", longReach - shortReach);
+}
+
 void edgeCases()
 {
     std::printf ("\n-- edge cases --\n");
@@ -162,6 +202,7 @@ int main()
     run (48000.0, 2048);
     run (96000.0, 4096);
     run (48000.0, 8192);
+    reachTest();
     edgeCases();
     std::printf ("\n%s\n", failures == 0 ? "All tests passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

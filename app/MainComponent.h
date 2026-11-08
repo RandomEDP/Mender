@@ -36,6 +36,9 @@ public:
 
     // View
     void setChannel (int channel); // -1 = all
+    void setFullBand (bool);
+    void setReference (mender::Reference);
+    void setEditAllChannels (bool);
     void setFftSize (int size);
     void setDisplay (double topDb, double rangeDb);
     SpectrogramView& getView() { return view; }
@@ -65,7 +68,9 @@ private:
     bool applyEdit (const juce::String& name, juce::int64 start, juce::int64 end,
                     const std::function<bool (float* const*, int)>& edit);
     void applyStep (const EditHistory::Step&, bool useAfter);
-    std::vector<int> editChannels() const;
+    std::vector<int> editChannels() const;   // channels that edits change
+    std::vector<int> listenChannels() const; // channels shown, and auditioned
+    void updateReachLimits();
     void rebuildChannelList();
     void updateControls();
     void setStatus (const juce::String&);
@@ -97,7 +102,8 @@ private:
         copyButton { "Copy" }, pasteButton { "Paste" }, repairButton { "Repair" },
         timeInButton { "Time +" }, timeOutButton { juce::String::fromUTF8 ("Time \xe2\x88\x92") },
         freqInButton { "Freq +" }, freqOutButton { juce::String::fromUTF8 ("Freq \xe2\x88\x92") },
-        fitButton { "Fit" }, audioButton { "Audio output..." };
+        fitButton { "Fit" }, audioButton { "Audio output..." },
+        fullBandButton { "Full band" }, editAllButton { "Edit all channels" };
     juce::ComboBox channelBox, referenceBox, fftBox;
     juce::Slider strengthSlider, thresholdSlider, displayTopSlider, displayRangeSlider, levelSlider;
     juce::Label channelLabel { {}, "Channel" }, referenceLabel { {}, "Fill from" }, fftLabel { {}, "Resolution" },

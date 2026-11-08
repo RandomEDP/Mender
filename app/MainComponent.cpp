@@ -55,6 +55,24 @@ MainComponent::MainComponent()
 
     addAndMakeVisible (view);
     view.onSelectionChanged = [this] { updateControls(); };
+    view.onReachChanged = [this]
+    {
+        const auto r = view.getReach();
+        settings().setValue ("reachBefore", r.beforeSeconds);
+        settings().setValue ("reachAfter", r.afterSeconds);
+        settings().setValue ("reachBelow", r.belowOctaves);
+        settings().setValue ("reachAbove", r.aboveOctaves);
+        updateControls();
+    };
+
+    {
+        SpectrogramView::Reach r;
+        r.beforeSeconds = settings().getDoubleValue ("reachBefore", r.beforeSeconds);
+        r.afterSeconds = settings().getDoubleValue ("reachAfter", r.afterSeconds);
+        r.belowOctaves = settings().getDoubleValue ("reachBelow", r.belowOctaves);
+        r.aboveOctaves = settings().getDoubleValue ("reachAbove", r.aboveOctaves);
+        view.setReach (r);
+    }
     view.onSeek = [this] (juce::int64 sample)
     {
         // Moving the cursor during playback restarts playback from there.
@@ -64,7 +82,8 @@ MainComponent::MainComponent()
 
     for (auto* b : { &openButton, &saveButton, &playButton, &playBoxButton, &auditionButton, &originalButton,
                      &undoButton, &redoButton, &copyButton, &pasteButton, &repairButton, &timeInButton,
-                     &timeOutButton, &freqInButton, &freqOutButton, &fitButton, &audioButton })
+                     &timeOutButton, &freqInButton, &freqOutButton, &fitButton, &audioButton,
+                     &fullBandButton, &editAllButton })
     {
         addAndMakeVisible (b);
         b->setWantsKeyboardFocus (false); // keep the keyboard shortcuts working
@@ -98,17 +117,34 @@ MainComponent::MainComponent()
     originalButton.onClick = [this] { player.setPlayOriginal (originalButton.getToggleState()); };
 
     channelBox.onChange = [this] { setChannel (channelBox.getSelectedId() - 2); };
+
+    fullBandButton.setClickingTogglesState (true);
+    fullBandButton.setTooltip ("Select time only: boxes cover every frequency (F).");
+    fullBandButton.onClick = [this] { setFullBand (fullBandButton.getToggleState()); };
+
+    for (auto* b : { &fullBandButton, &editAllButton, &originalButton })
+        b->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff2f8f83));
+
+    editAllButton.setClickingTogglesState (true);
+    editAllButton.setTooltip ("Repair, copy and paste every channel while viewing just one.");
+    editAllButton.onClick = [this] { setEditAllChannels (editAllButton.getToggleState()); };
     channelBox.setTooltip ("Which channel to show, play and edit. \"All\" edits every channel together.");
 
     referenceBox.addItem ("Before and after", 1);
     referenceBox.addItem ("Above and below", 2);
     referenceBox.setSelectedId (1, juce::dontSendNotification);
+    referenceBox.onChange = [this]
+    {
+        view.setReferenceMode (referenceBox.getSelectedId() == 2 ? mender::Reference::frequency : mender::Reference::time);
+        updateControls();
+    };
     referenceBox.setTooltip ("Where the replacement level comes from: the audio either side of the box in time, "
                              "or the frequencies just above and below it.");
 
     for (int size : { 1024, 2048, 4096, 8192, 16384 })
         fftBox.addItem (juce::String (size) + " bands", size);
     fftBox.setSelectedId (2048, juce::dontSendNotification);
+    fftBox.onChange = [this] { updateReachLimits(); };
     fftBox.setTooltip ("More bands separate close pitches better; fewer bands follow fast sounds better.");
 
     strengthSlider.setRange (0.0, 100.0, 1.0);
@@ -172,7 +208,7 @@ MainComponent::MainComponent()
     }
 
     setWantsKeyboardFocus (true);
-    setSize (1240, 760);
+    setSize (1320, 780);
     rebuildChannelList();
     updateControls();
     setStatus ("Open a clip, drag a box around the noise, then press Repair.");
@@ -212,17 +248,19 @@ void MainComponent::resized()
     place (row1, undoButton, 58);
     place (row1, redoButton, 58, 18);
     place (row1, copyButton, 58);
-    place (row1, pasteButton, 58);
+    place (row1, pasteButton, 58, 18);
+    place (row1, fullBandButton, 84);
 
     area.removeFromTop (8);
     auto row2 = area.removeFromTop (26);
     place (row2, channelLabel, 56, 2);
-    place (row2, channelBox, 190, 16);
+    place (row2, channelBox, 160, 6);
+    place (row2, editAllButton, 124, 16);
     place (row2, referenceLabel, 58, 2);
     place (row2, referenceBox, 146, 16);
     place (row2, fftLabel, 70, 2);
     place (row2, fftBox, 118, 16);
-    const int sliderWidth = juce::jmax (120, (row2.getWidth() - 60 - 66 - 16) / 2);
+    const int sliderWidth = juce::jmax (110, (row2.getWidth() - 60 - 66 - 16) / 2);
     place (row2, strengthLabel, 60, 2);
     place (row2, strengthSlider, sliderWidth, 16);
     place (row2, thresholdLabel, 66, 2);
@@ -302,6 +340,7 @@ bool MainComponent::loadFile (const juce::File& file)
     trackNames = wavchunks::trackNames (ixmlChunk.toString(), channels);
 
     fftBox.setSelectedId (sampleRate > 100000.0 ? 8192 : (sampleRate > 50000.0 ? 4096 : 2048), juce::dontSendNotification);
+    updateReachLimits();
     rebuildChannelList();
     view.setAudio (&clip, sampleRate);
     player.setClip (&clip, &history, sampleRate);
@@ -362,7 +401,7 @@ bool MainComponent::saveTo (const juce::File& file)
 }
 
 //==============================================================================
-std::vector<int> MainComponent::editChannels() const
+std::vector<int> MainComponent::listenChannels() const
 {
     const int shown = view.getDisplayChannel();
     if (shown >= 0)
@@ -373,13 +412,61 @@ std::vector<int> MainComponent::editChannels() const
     return all;
 }
 
+std::vector<int> MainComponent::editChannels() const
+{
+    if (editAllButton.getToggleState())
+    {
+        std::vector<int> all ((size_t) clip.getNumChannels());
+        std::iota (all.begin(), all.end(), 0);
+        return all;
+    }
+    return listenChannels();
+}
+
+void MainComponent::updateReachLimits()
+{
+    // The repair always learns from at least one analysis frame each side.
+    if (sampleRate > 0.0)
+        view.setMinimumReach (fftBox.getSelectedId() / sampleRate);
+    updateControls();
+}
+
+void MainComponent::setFullBand (bool on)
+{
+    fullBandButton.setToggleState (on, juce::dontSendNotification);
+    view.setFullBand (on);
+
+    // Across the whole spectrum there is nothing above or below to learn from.
+    referenceBox.setEnabled (! on);
+    if (on)
+        referenceBox.setSelectedId (1, juce::sendNotificationSync);
+    updateControls();
+}
+
+void MainComponent::setReference (mender::Reference r)
+{
+    referenceBox.setSelectedId (r == mender::Reference::frequency ? 2 : 1, juce::sendNotificationSync);
+}
+
+void MainComponent::setEditAllChannels (bool on)
+{
+    editAllButton.setToggleState (on, juce::dontSendNotification);
+    updateControls();
+}
+
 mender::Settings MainComponent::currentSettings() const
 {
     mender::Settings s;
     s.fftSize = fftBox.getSelectedId();
     s.strength = strengthSlider.getValue() / 100.0;
     s.thresholdDb = thresholdSlider.getValue();
-    s.reference = referenceBox.getSelectedId() == 2 ? mender::Reference::frequency : mender::Reference::time;
+    s.reference = referenceBox.getSelectedId() == 2 && ! view.isFullBand() ? mender::Reference::frequency : mender::Reference::time;
+
+    const auto reach = view.getEffectiveReach();
+    s.referenceBeforeSeconds = reach.beforeSeconds;
+    s.referenceAfterSeconds = reach.afterSeconds;
+    s.referenceBelowOctaves = reach.belowOctaves;
+    s.referenceAboveOctaves = reach.aboveOctaves;
     return s;
 }
 
@@ -408,6 +495,7 @@ bool MainComponent::applyEdit (const juce::String& name, juce::int64 start, juce
 
     bool changed;
     {
+        const juce::ScopedWriteLock viewGuard (view.getAudioLock());
         const juce::SpinLock::ScopedLockType guard (player.getLock());
         changed = edit (pointers.data(), count);
     }
@@ -530,6 +618,7 @@ void MainComponent::applyStep (const EditHistory::Step& step, bool useAfter)
 {
     const auto& source = useAfter ? step.after : step.before;
     {
+        const juce::ScopedWriteLock viewGuard (view.getAudioLock());
         const juce::SpinLock::ScopedLockType guard (player.getLock());
         for (size_t k = 0; k < step.channels.size(); ++k)
             clip.copyFrom (step.channels[k], step.start, source, (int) k, 0, source.getNumSamples());
@@ -594,7 +683,7 @@ juce::AudioBuffer<float> MainComponent::makeAudition (bool bandOnly) const
         return {};
 
     const auto s = view.getSelection();
-    const auto channels = editChannels();
+    const auto channels = listenChannels();
     const int pad = bandOnly ? fftBox.getSelectedId() : 0; // context so the band filter has no edge effects
     const auto from = s.startSample - pad;
     const int length = (int) (s.endSample - s.startSample) + 2 * pad;
@@ -757,6 +846,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         chooseFileToOpen();
     else if (mods.isCommandDown() && code == 'S')
         chooseFileToSave();
+    else if (! mods.isCommandDown() && code == 'F')
+        setFullBand (! view.isFullBand());
     else if (! mods.isCommandDown() && code == 'B')
         playBox();
     else if (! mods.isCommandDown() && code == 'A')
@@ -798,6 +889,8 @@ void MainComponent::updateControls()
     for (auto* b : { &repairButton, &playBoxButton, &auditionButton, &copyButton })
         b->setEnabled (box);
     channelBox.setEnabled (loaded && clip.getNumChannels() > 1);
+    editAllButton.setEnabled (loaded && clip.getNumChannels() > 1);
+    fullBandButton.setEnabled (loaded);
     pasteButton.setEnabled (loaded && clipboard.valid);
     undoButton.setEnabled (history.canUndo());
     redoButton.setEnabled (history.canRedo());
@@ -806,9 +899,18 @@ void MainComponent::updateControls()
     {
         const auto s = view.getSelection();
         const double start = (double) s.startSample / sampleRate, end = (double) s.endSample / sampleRate;
+        const auto reach = view.getEffectiveReach();
+        const bool timeReference = view.isFullBand() || referenceBox.getSelectedId() == 1;
+        const auto edited = editChannels();
         setStatus ("Box: " + formatTime (start) + " to " + formatTime (end) + " ("
                    + juce::String (juce::roundToInt ((end - start) * 1000.0)) + " ms), "
-                   + formatHz (s.lowHz) + " to " + formatHz (s.highHz));
+                   + (view.isFullBand() ? juce::String ("all frequencies") : formatHz (s.lowHz) + " to " + formatHz (s.highHz))
+                   + ".  Learns from "
+                   + (timeReference ? juce::String (juce::roundToInt (reach.beforeSeconds * 1000.0)) + " ms before, "
+                                          + juce::String (juce::roundToInt (reach.afterSeconds * 1000.0)) + " ms after"
+                                    : juce::String (reach.belowOctaves, 2) + " oct below, " + juce::String (reach.aboveOctaves, 2) + " oct above")
+                   + ".  Edits " + (edited.size() == 1 ? "channel " + juce::String (edited[0] + 1)
+                                                       : juce::String ((int) edited.size()) + " channels") + ".");
     }
 }
 

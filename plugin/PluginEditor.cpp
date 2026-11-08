@@ -49,6 +49,10 @@ MenderEditor::MenderEditor (MenderProcessor& p)
     referenceBox.addItem ("Before and after", 1);
     referenceBox.addItem ("Above and below", 2);
     referenceBox.setSelectedId (1, juce::dontSendNotification);
+    referenceBox.onChange = [this]
+    {
+        view.setReferenceMode (referenceBox.getSelectedId() == 2 ? mender::Reference::frequency : mender::Reference::time);
+    };
     referenceBox.setTooltip ("Where the replacement level comes from: the audio either side of the box in time, "
                              "or the frequencies just above and below it.");
 
@@ -258,6 +262,7 @@ void MenderEditor::reload()
     fftBox.setSelectedId (sourceRate > 50000.0 ? 4096 : 2048, juce::dontSendNotification);
     bypassButton.setToggleState (m->patches.isBypassed(), juce::dontSendNotification);
     view.setAudio (&working, sourceRate);
+    view.setMinimumReach (fftBox.getSelectedId() / sourceRate);
     updateControls();
     setStatus (truncated ? "Showing the first " + formatTime (maxSecondsShown)
                                + " of this clip. Split the clip in the host to work on a later part."
@@ -276,6 +281,11 @@ void MenderEditor::repairSelection()
     settings.strength = strengthSlider.getValue() / 100.0;
     settings.thresholdDb = thresholdSlider.getValue();
     settings.reference = referenceBox.getSelectedId() == 2 ? mender::Reference::frequency : mender::Reference::time;
+    const auto reach = view.getEffectiveReach();
+    settings.referenceBeforeSeconds = reach.beforeSeconds;
+    settings.referenceAfterSeconds = reach.afterSeconds;
+    settings.referenceBelowOctaves = reach.belowOctaves;
+    settings.referenceAboveOctaves = reach.aboveOctaves;
 
     const auto selection = view.getSelection();
     const auto range = mender::affectedRange (working.getNumSamples(), selection, settings);
@@ -292,8 +302,12 @@ void MenderEditor::repairSelection()
     for (int c = 0; c < channels; ++c)
         patch.delta.copyFrom (c, 0, working, c, start, length); // audio before the repair
 
-    const auto result = mender::repair (working.getArrayOfWritePointers(), channels, working.getNumSamples(),
-                                        sourceRate, selection, settings);
+    mender::Result result;
+    {
+        const juce::ScopedWriteLock guard (view.getAudioLock());
+        result = mender::repair (working.getArrayOfWritePointers(), channels, working.getNumSamples(),
+                                 sourceRate, selection, settings);
+    }
     if (! result.changed)
         return setStatus ("Nothing in the box is louder than its surroundings. "
                           "Try a lower tolerance or the other fill direction.");
@@ -317,8 +331,11 @@ void MenderEditor::addToWorking (const Patch& patch, float gain)
     if (to <= from)
         return;
 
-    for (int c = 0; c < juce::jmin (working.getNumChannels(), patch.delta.getNumChannels()); ++c)
-        working.addFrom (c, (int) (from - rangeStart), patch.delta, c, (int) (from - patch.start), (int) (to - from), gain);
+    {
+        const juce::ScopedWriteLock guard (view.getAudioLock());
+        for (int c = 0; c < juce::jmin (working.getNumChannels(), patch.delta.getNumChannels()); ++c)
+            working.addFrom (c, (int) (from - rangeStart), patch.delta, c, (int) (from - patch.start), (int) (to - from), gain);
+    }
 
     view.audioChanged (from - rangeStart, to - rangeStart);
 }

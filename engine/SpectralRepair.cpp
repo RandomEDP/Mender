@@ -186,9 +186,29 @@ Result repair (float* const* channels, int numChannels, std::int64_t numSamples,
     std::vector<double> correction;
 
     const auto range = affectedRange (numSamples, sel, settings);
-    const int refFrames = std::max (1, settings.referenceFrames);
     const std::int64_t lastFrame = plan.firstFrame + (std::int64_t) (plan.numFrames - 1) * hop;
-    const int sideBins = std::max (3, (boxHi - boxLo) / 4);
+
+    // Frames learned from on each side. The first "before" frame ends at the box's
+    // start; the first "after" frame starts at or just after its end. Always at least one.
+    const auto framesWithin = [n, hop] (double reachSamples, std::int64_t gap)
+    {
+        const double usable = reachSamples - (double) gap - n;
+        return usable < 0.0 ? 1 : (int) (usable / hop) + 1;
+    };
+    const int framesBefore = settings.referenceBeforeSeconds > 0.0
+                                 ? framesWithin (settings.referenceBeforeSeconds * sampleRate, 0)
+                                 : std::max (1, settings.referenceFrames);
+    const int framesAfter = settings.referenceAfterSeconds > 0.0
+                                ? framesWithin (settings.referenceAfterSeconds * sampleRate, lastFrame + hop - plan.selEnd)
+                                : std::max (1, settings.referenceFrames);
+
+    // Bands compared with in frequency mode, at least three bins each.
+    const int defaultSideBins = std::max (3, (boxHi - boxLo) / 4);
+    int belowFrom = binLo - defaultSideBins, aboveTo = binHi + defaultSideBins;
+    if (settings.referenceBelowOctaves > 0.0)
+        belowFrom = std::min (binLo - 3, (int) std::floor (sel.lowHz / std::pow (2.0, settings.referenceBelowOctaves) / binHz));
+    if (settings.referenceAboveOctaves > 0.0)
+        aboveTo = std::max (binHi + 3, (int) std::ceil (sel.highHz * std::pow (2.0, settings.referenceAboveOctaves) / binHz));
 
     for (int c = 0; c < numChannels; ++c)
     {
@@ -198,9 +218,9 @@ Result repair (float* const* channels, int numChannels, std::int64_t numSamples,
         if (settings.reference == Reference::time)
         {
             // Walk outwards from the box on each side.
-            haveBefore = referenceMagnitudes (ch, plan.firstFrame - hop, -hop, refFrames,
+            haveBefore = referenceMagnitudes (ch, plan.firstFrame - hop, -hop, framesBefore,
                                             window, fft, binLo, binHi, before);
-            haveAfter = referenceMagnitudes (ch, lastFrame + hop, hop, refFrames,
+            haveAfter = referenceMagnitudes (ch, lastFrame + hop, hop, framesAfter,
                                            window, fft, binLo, binHi, after);
         }
         const bool useTime = haveBefore || haveAfter; // otherwise fall back to frequency
@@ -220,8 +240,8 @@ Result repair (float* const* channels, int numChannels, std::int64_t numSamples,
             bool haveBelow = false, haveAbove = false;
             if (! useTime)
             {
-                haveBelow = sideLevel (spec, binLo - sideBins, binLo - 1, half, below);
-                haveAbove = sideLevel (spec, binHi + 1, binHi + sideBins, half, above);
+                haveBelow = sideLevel (spec, belowFrom, binLo - 1, half, below);
+                haveAbove = sideLevel (spec, binHi + 1, aboveTo, half, above);
                 if (! haveBelow && ! haveAbove)
                     continue; // box covers the whole spectrum and there is nothing to compare with
             }

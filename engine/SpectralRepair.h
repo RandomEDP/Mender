@@ -31,7 +31,13 @@ struct Settings
     double strength = 1.0;        // 0 = no change, 1 = full repair
     double thresholdDb = 0.0;     // how far above the predicted level a bin may sit
     Reference reference = Reference::time;
-    int referenceFrames = 8;      // frames averaged on each side (time reference)
+    int referenceFrames = 8;      // frames used on each side when no reach is given (time reference)
+
+    // How much surrounding audio the repair learns from. 0 keeps the defaults above.
+    double referenceBeforeSeconds = 0.0; // time reference: audio just before the box
+    double referenceAfterSeconds = 0.0;  // time reference: audio just after the box
+    double referenceBelowOctaves = 0.0;  // frequency reference: band just below the box
+    double referenceAboveOctaves = 0.0;  // frequency reference: band just above the box
 };
 
 struct Result

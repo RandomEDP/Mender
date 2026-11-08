@@ -41,9 +41,10 @@ FLAC, up to 128 channels and 192 kHz.
 **Looking**
 - Mouse wheel zooms time; Ctrl/Cmd + wheel zooms frequency. Shift scrolls.
   The Zoom buttons do the same; Fit shows everything; double-click zooms to the box.
+- After zooming or scrolling, the visible part is redrawn at full screen
+  resolution a moment later, with finer frequency detail when zoomed in on frequency.
 - **Brightness** and **Range** change how loud a sound must be to show, instantly.
 - **Channel** shows one channel (with its recorder track name) or all of them.
-  Editing and playback follow it: "All" edits every channel together.
 
 **Listening**
 - The yellow **cursor** marks where playback starts: click to place it or drag
@@ -54,11 +55,25 @@ FLAC, up to 128 channels and 192 kHz.
 - **Level** sets playback volume; **Audio output...** picks the device and outputs.
   Both are remembered.
 
+**Selecting**
+- Drag to draw a box. You can start outside the picture (above it, or over the
+  axis labels): the box snaps to the edge, so the top reaches the highest
+  frequency and the bottom reaches 0 Hz.
+- Drag the box's edges or corner handles to resize it, or drag inside it to
+  move it in time and frequency. Hold Shift while moving to keep to one axis.
+- **Full band** (F) selects time only: boxes cover every frequency.
+- The **whiskers** either side of the box show how much surrounding audio the
+  repair learns from. Drag their ends to change it; the faint band shows the
+  audio used. With *Fill from: Before and after* they point left and right;
+  with *Above and below* they point up and down. They are remembered.
+
 **Editing**
-- Drag a box around the noise and press **Repair** (Enter or R).
+- Press **Repair** (Enter or R).
+- **Edit all channels** makes Repair, Copy and Paste change every channel
+  while you view and listen to just one.
 - **Copy** (Ctrl+C) takes the frequencies inside the box; **Paste** (Ctrl+V)
   replaces that band at the cursor with them, fading in and out. Use it to lay
-  clean room tone over a cough.
+  clean room tone over a cough. The pasted box can then be moved and resized.
 - **Undo/Redo** with Ctrl+Z / Ctrl+Y.
 - **Save As** writes a new WAV at the source sample rate, 24-bit or better,
   keeping the broadcast-WAV timecode and the recorder's iXML metadata.
